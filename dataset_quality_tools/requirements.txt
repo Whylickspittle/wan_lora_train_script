@@ -1,0 +1,9 @@
+# Dataset quality tools dependencies
+# Most dependencies are already provided by ../requirements.txt
+# Install this only if you want a standalone environment.
+
+torch>=2.4.0
+numpy>=1.26.0
+av>=12.0.0
+tqdm>=4.66.0
+matplotlib>=3.8.0
