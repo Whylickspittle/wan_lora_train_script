@@ -12,6 +12,7 @@
 |------|------|------|------|
 | `clean_dataset.py` | 分析已切分好的 clips | `clips/` 目录或 `manifest.jsonl` | `quality_report.csv`, `summary.json`, `report.html`, `quarantine/` |
 | `prescreen_sources.py` | 预筛选候选 source URL | `urls.txt` | `prescreen_report.csv`, `keep_urls.txt`, `reject_urls.txt` |
+| `download_pexels_quality_pipeline.py` | Pexels 端到端下载/切片/质检 pipeline | Pexels API key + 关键词 | `clips/`, `quality_report/`, `quarantine/`, `manifest.jsonl`, `diagnostics/` |
 
 ---
 
@@ -32,7 +33,125 @@ python prescreen_sources.py /path/to/urls.txt --output ./prescreen --metadata-on
 
 ---
 
-## clean_dataset.py 指标说明
+## Pexels 端到端 Pipeline（新增）
+
+`download_pexels_quality_pipeline.py` 把 Pexels 搜索、下载、切片、`clean_dataset.py` 质检、隔离 FAIL、生成 `manifest.jsonl` 串成一条命令。
+
+支持分阶段执行，适合“先批量下载 raw 视频，再统一切片质检”的 workflow。
+
+### 推荐：一小时下载 200 个视频再质检
+
+Pexels API 的搜索分页每次最多返回 80 条；200 个视频约需 3 次搜索请求，加上 200 次文件下载。实际耗时主要取决于你的带宽。建议先把 200 个原视频下完，再单独跑切片和质检：
+
+```bash
+cd dataset_quality_tools
+
+# 阶段 1：下载 200 个 4K 24fps 原视频（只下载，不切）
+python download_pexels_quality_pipeline.py \
+    --api-key "YOUR_API_KEY" \
+    --query "4k nature scenery drone" \
+    --count 200 \
+    --min-height 2160 \
+    --min-fps 24 \
+    --output ./pexels_nature \
+    --download-only
+
+# 阶段 2：每个原视频切 2 个 clip，然后质检、隔离 FAIL、生成 manifest
+python download_pexels_quality_pipeline.py \
+    --output ./pexels_nature \
+    --clips-per-video 2 \
+    --quarantine \
+    --process-only
+```
+
+阶段 1 完成后，目录结构：
+
+```text
+pexels_nature/
+└── raw/          # 200 个原始视频
+```
+
+阶段 2 完成后：
+
+```text
+pexels_nature/
+├── clips/                    # 切片
+├── quality_report/
+│   ├── quality_report.csv
+│   ├── summary.json
+│   └── report.html           # 打开这个人工复核 PASS/REVIEW/FAIL
+├── quarantine/               # FAIL clip
+└── manifest.jsonl            # 训练用（默认只含 PASS）
+```
+
+### 一次性跑完（下载 + 切片 + 质检）
+
+```bash
+python download_pexels_quality_pipeline.py \
+    --api-key "YOUR_API_KEY" \
+    --query "4k nature scenery drone" \
+    --count 20 \
+    --min-height 2160 \
+    --min-fps 24 \
+    --clips-per-video 2 \
+    --output ./pexels_nature \
+    --quarantine \
+    --run-diagnostics
+```
+
+### 关键参数
+
+| 参数 | 说明 |
+|------|------|
+| `--api-key` | Pexels API key（`--process-only` 时可省略） |
+| `--query` | 搜索关键词 |
+| `--count` | 下载视频数量 |
+| `--min-height` | 最小高度，2160=4K |
+| `--min-fps` | 最小帧率 |
+| `--clips-per-video` | 每个视频切几个 5.04s clip |
+| `--download-only` | 只下载原视频 |
+| `--process-only` | 只切片/质检已有 `raw/` |
+| `--quarantine` | 隔离 FAIL clip |
+| `--allow-review` | REVIEW clip 也写入 manifest |
+| `--skip-quality-check` | 跳过质检（不需要 torch/numpy/av） |
+| `--run-diagnostics` | 最后跑 `_core/dataset_diagnostics.py` |
+| `--prompt-template` | manifest prompt 模板，支持 `{query}`/`{description}`/`{resolution}`/`{height}` |
+
+### 人工审核
+
+阶段 2 结束后，重点看这两个文件：
+
+- `quality_report/report.html`：每个 clip 的 PASS/REVIEW/FAIL 和原因。
+- `quarantine/`：被隔离的 FAIL clip，建议抽样检查是否误判。
+
+如果你希望把 REVIEW 也加入训练集，重新跑阶段 2 时加上 `--allow-review`。
+
+### 与训练流程衔接
+
+把生成的 `manifest.jsonl` 路径配到 `wan_lora_train_script/h100_dataset_training/config.json`：
+
+```json
+{
+  "active_dataset": "pexels_nature",
+  "project_output_root": "runs",
+  "datasets": {
+    "pexels_nature": {
+      "display_name": "Pexels Nature Drone",
+      "manifest": "/Users/hongyu/Documents/bt_project/sn70/wan_lora_train_script/dataset_quality_tools/pexels_nature/manifest.jsonl"
+    }
+  }
+}
+```
+
+然后：
+
+```bash
+cd ../h100_dataset_training
+python 01_preflight_dataset.py
+python 02_train_dataset.py
+```
+
+---
 
 ### 核心指标（与训练代码对齐）
 
