@@ -15,4 +15,7 @@ matplotlib>=3.8.0
 huggingface_hub>=0.25.0
 datasets>=2.20.0
 requests>=2.32.0
+openai>=1.40.0
+python-dotenv>=1.0.1
+pyarrow>=14.0.0
 accelerate
