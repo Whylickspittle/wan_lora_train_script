@@ -41,6 +41,7 @@ def search_videos(
     query: str,
     page: int = 1,
     per_page: int = 80,
+    max_retries: int = 5,
 ) -> dict[str, Any]:
     """Search Pexels videos and return the JSON response.
 
@@ -49,12 +50,14 @@ def search_videos(
         query: Search query string.
         page: 1-based page number.
         per_page: Results per page (max 80).
+        max_retries: Number of retries on transient network/DNS errors.
 
     Returns:
         Parsed JSON response from Pexels.
 
     Raises:
         requests.HTTPError: on non-2xx API responses.
+        requests.ConnectionError: if all retries fail.
     """
     headers = {"Authorization": api_key}
     params = {
@@ -63,14 +66,23 @@ def search_videos(
         "per_page": per_page,
         "orientation": "landscape",
     }
-    resp = requests.get(
-        f"{PEXELS_API_BASE}/search",
-        headers=headers,
-        params=params,
-        timeout=60,
-    )
-    resp.raise_for_status()
-    return resp.json()
+    last_exc: Exception | None = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            resp = requests.get(
+                f"{PEXELS_API_BASE}/search",
+                headers=headers,
+                params=params,
+                timeout=60,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except (requests.ConnectionError, requests.Timeout) as exc:
+            last_exc = exc
+            print(f"  Pexels search attempt {attempt}/{max_retries} failed: {exc}")
+            if attempt < max_retries:
+                time.sleep(2 ** attempt)  # 2, 4, 8, 16, 32 seconds
+    raise last_exc if last_exc else PexelsError("Pexels search failed after retries")
 
 
 def pick_best_file(
