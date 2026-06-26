@@ -85,6 +85,8 @@ def build_quality_cfg(args: argparse.Namespace) -> types.SimpleNamespace:
         clipping_ratio=args.clipping_ratio,
         min_conformance=args.min_conformance,
         scene_cut_max=args.scene_cut_max,
+        static_mean_delta=args.static_mean_delta,
+        max_mean_delta=args.max_mean_delta,
         extensions="mp4,mov,avi,webm,mkv",
         copy=args.copy_quarantine,
     )
@@ -414,6 +416,10 @@ def main() -> int:
     parser.add_argument("--clipping-ratio", type=float, default=0.15)
     parser.add_argument("--min-conformance", type=float, default=0.50)
     parser.add_argument("--scene-cut-max", type=int, default=0)
+    parser.add_argument("--static-mean-delta", type=float, default=0.005,
+                        help="Clips with temporal_diff_mean below this value are marked static/FAIL")
+    parser.add_argument("--max-mean-delta", type=float, default=None,
+                        help="Clips with temporal_diff_mean above this value are marked chaotic/FAIL")
     parser.add_argument("--quarantine", action="store_true", help="isolate FAIL clips")
     parser.add_argument("--copy-quarantine", action="store_true", help="copy instead of move when quarantining")
 

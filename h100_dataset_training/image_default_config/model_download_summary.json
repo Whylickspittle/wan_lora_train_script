@@ -1,0 +1,7 @@
+{
+  "source_model_id": "Wan-AI/Wan2.2-TI2V-5B-Diffusers",
+  "revision": "main",
+  "local_dir": "models/Wan2.2-TI2V-5B-Diffusers",
+  "resolved_path": "/workspace/training/Wan2.2DatasetAnalsis/h100_dataset_training/models/Wan2.2-TI2V-5B-Diffusers",
+  "used_token": false
+}

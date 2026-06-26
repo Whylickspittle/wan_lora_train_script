@@ -1,22 +1,23 @@
 #!/usr/bin/env python3
-"""Standalone Bailian/DashScope caption annotator for video clip manifests.
+"""Standalone NVIDIA NIM caption annotator for video clip manifests.
 
 Reads a ``manifest.jsonl`` (for example produced by
-``download_pexels_quality_pipeline.py``), extracts the first frame of every
-video, asks an Aliyun Bailian vision model for a short prompt-style caption,
-and writes a new manifest with the caption stored in the ``prompt`` field.
+``download_pexels_quality_pipeline.py`` or ``convert_to_nexisgen_dataset.py``),
+extracts the first frame of every video, asks an NVIDIA-hosted vision model for
+a short prompt-style caption, and writes a new manifest with the caption stored
+in the ``prompt`` field.
 
-The implementation mirrors ``nexisgen/nexis/miner/captioner.py``:
+The implementation mirrors ``caption_with_bailian.py``:
 * it sends a single first-frame image to the model;
 * it uses the same system prompt so generated captions are suitable for
   text-to-video training.
 
 Environment variables
 ---------------------
-DASHSCOPE_API_KEY
+NVIDIA_API_KEY
     Required unless ``--api-key`` is passed.
 NEXIS_CAPTION_MODEL
-    Default model name (default: ``qwen3.5-omni-plus``).
+    Default model name (default: ``moonshotai/kimi-k2.6``).
 NEXIS_CAPTION_TIMEOUT_SEC
     API call timeout in seconds (default: 30).
 """
@@ -54,12 +55,11 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 if load_dotenv is not None:
     load_dotenv(_SCRIPT_DIR / ".env", override=False)
     load_dotenv(override=False)
-    
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = os.getenv("NEXIS_CAPTION_MODEL", "qwen3.5-omni-flash")
-DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+DEFAULT_MODEL = os.getenv("NVIDIA_CAPTION_MODEL", "moonshotai/kimi-k2.6")
+DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_TIMEOUT_SEC = int(os.getenv("NEXIS_CAPTION_TIMEOUT_SEC", "30"))
 
 _PROMPT = os.getenv(
@@ -95,8 +95,8 @@ def extract_first_frame(video_path: Path, output_path: Path, timeout: int = 60) 
     subprocess.run(cmd, check=True, timeout=timeout)
 
 
-class BailianCaptioner:
-    """OpenAI-compatible client targeting Aliyun Bailian/DashScope."""
+class NvidiaCaptioner:
+    """OpenAI-compatible client targeting NVIDIA NIM."""
 
     def __init__(
         self,
@@ -162,7 +162,7 @@ def resolve_video_path(
 
 def _caption_one(
     args: argparse.Namespace,
-    captioner: BailianCaptioner,
+    captioner: NvidiaCaptioner,
     row: dict[str, Any],
     manifest_dir: Path,
     clips_dir: Path,
@@ -224,7 +224,7 @@ def _write_manifest(path: Path, rows: list[dict[str, Any]]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Caption video clips using Bailian/DashScope vision model."
+        description="Caption video clips using NVIDIA NIM vision model."
     )
     parser.add_argument(
         "--manifest",
@@ -252,18 +252,18 @@ def main() -> int:
     )
     parser.add_argument(
         "--api-key",
-        default=os.getenv("DASHSCOPE_API_KEY", ""),
-        help="DashScope API key (or set DASHSCOPE_API_KEY env var).",
+        default=os.getenv("NVIDIA_API_KEY", ""),
+        help="NVIDIA API key (or set NVIDIA_API_KEY env var).",
     )
     parser.add_argument(
         "--model",
         default=DEFAULT_MODEL,
-        help=f"Bailian model name (default: {DEFAULT_MODEL}).",
+        help=f"NVIDIA NIM model name (default: {DEFAULT_MODEL}).",
     )
     parser.add_argument(
         "--base-url",
         default=DEFAULT_BASE_URL,
-        help="OpenAI-compatible base URL for Bailian.",
+        help="OpenAI-compatible base URL for NVIDIA NIM.",
     )
     parser.add_argument(
         "--timeout",
@@ -297,7 +297,7 @@ def main() -> int:
 
     if not args.api_key.strip():
         logger.error(
-            "No API key provided. Set DASHSCOPE_API_KEY or pass --api-key."
+            "No API key provided. Set NVIDIA_API_KEY or pass --api-key."
         )
         return 1
 
@@ -314,7 +314,7 @@ def main() -> int:
         else (args.output or args.manifest.with_suffix(".captioned.jsonl"))
     )
 
-    captioner = BailianCaptioner(
+    captioner = NvidiaCaptioner(
         api_key=args.api_key,
         model=args.model,
         base_url=args.base_url,

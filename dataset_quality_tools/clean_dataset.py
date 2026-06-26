@@ -204,7 +204,6 @@ def grade_clip(
     conformance = metrics["conformance_score"]
     duplicates = metrics["duplicate_frame_ratio"]
     timelapse = metrics["timelapse_score"]
-    static_ratio = float((metrics["temporal_diff_mean"] < 0.02))
     scene_cuts = metrics["scene_cut_count"]
     clipping = metrics["black_pixel_ratio"] + metrics["white_pixel_ratio"]
 
@@ -216,8 +215,13 @@ def grade_clip(
         reasons.append(f"duplicates={duplicates:.2%}")
     if timelapse > cfg.timelapse_score:
         reasons.append(f"timelapse={timelapse:.2f}")
-    if static_ratio and metrics["temporal_diff_mean"] < 0.005:
+    if metrics["temporal_diff_mean"] < getattr(cfg, "static_mean_delta", 0.005):
         reasons.append(f"static_mean_delta={metrics['temporal_diff_mean']:.4f}")
+    max_mean_delta = getattr(cfg, "max_mean_delta", None)
+    if max_mean_delta is not None and metrics["temporal_diff_mean"] > max_mean_delta:
+        # Upper bound on motion: clips this chaotic hurt Subject/Background
+        # Consistency and Motion Smoothness (VBench dimensions).
+        reasons.append(f"chaotic_mean_delta={metrics['temporal_diff_mean']:.4f}")
     if clipping > cfg.clipping_ratio:
         reasons.append(f"clipping={clipping:.2%}")
     if conformance < cfg.min_conformance:
@@ -498,6 +502,8 @@ Examples:
     parser.add_argument("--clipping-ratio", type=float, default=0.15, help="Black+white pixel ratio threshold")
     parser.add_argument("--min-conformance", type=float, default=0.50, help="Minimum conformance score")
     parser.add_argument("--scene-cut-max", type=int, default=0, help="Max scene cuts per clip")
+    parser.add_argument("--static-mean-delta", type=float, default=0.005, help="Clips with temporal_diff_mean below this value are marked static/FAIL")
+    parser.add_argument("--max-mean-delta", type=float, default=None, help="Clips with temporal_diff_mean above this value are marked chaotic/FAIL (protects consistency/smoothness)")
 
     # Actions
     parser.add_argument("--quarantine", action="store_true", help="Move failed clips to output/quarantine")

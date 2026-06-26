@@ -1,22 +1,16 @@
 #!/usr/bin/env python3
-"""Standalone Bailian/DashScope caption annotator for video clip manifests.
+"""Standalone Kimi/Moonshot caption annotator for video clip manifests.
 
-Reads a ``manifest.jsonl`` (for example produced by
-``download_pexels_quality_pipeline.py``), extracts the first frame of every
-video, asks an Aliyun Bailian vision model for a short prompt-style caption,
+Reads a ``manifest.jsonl``, extracts the first frame of every video,
+asks a Kimi vision model for a short prompt-style caption,
 and writes a new manifest with the caption stored in the ``prompt`` field.
-
-The implementation mirrors ``nexisgen/nexis/miner/captioner.py``:
-* it sends a single first-frame image to the model;
-* it uses the same system prompt so generated captions are suitable for
-  text-to-video training.
 
 Environment variables
 ---------------------
-DASHSCOPE_API_KEY
+KIMI_API_KEY
     Required unless ``--api-key`` is passed.
 NEXIS_CAPTION_MODEL
-    Default model name (default: ``qwen3.5-omni-plus``).
+    Default model name (default: ``kimi-k2.5``).
 NEXIS_CAPTION_TIMEOUT_SEC
     API call timeout in seconds (default: 30).
 """
@@ -38,28 +32,29 @@ from typing import Any
 
 try:
     from dotenv import load_dotenv
-except ImportError:  # pragma: no cover
+except ImportError:
     load_dotenv = None  # type: ignore[assignment]
 
 try:
     from openai import OpenAI
-except ImportError as exc:  # pragma: no cover - runtime guard
+except ImportError as exc:
     raise ImportError(
         "The 'openai' package is required. Install it with:\n"
         "  pip install openai>=1.40.0"
     ) from exc
 
-# Load .env from the script's directory first, then the current working directory.
 _SCRIPT_DIR = Path(__file__).resolve().parent
 if load_dotenv is not None:
     load_dotenv(_SCRIPT_DIR / ".env", override=False)
     load_dotenv(override=False)
-    
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = os.getenv("NEXIS_CAPTION_MODEL", "qwen3.5-omni-flash")
-DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+# ============================================================================
+# 核心变更：Kimi / Moonshot 配置（替换了 Bailian/DashScope 的默认值）
+# ============================================================================
+DEFAULT_MODEL = os.getenv("NEXIS_CAPTION_MODEL", "kimi-k2.5")
+DEFAULT_BASE_URL = "https://api.kimi.com/coding/v1"  # ← 从 dashscope 改为 moonshot  https://api.kimi.com/coding/v1
 DEFAULT_TIMEOUT_SEC = int(os.getenv("NEXIS_CAPTION_TIMEOUT_SEC", "30"))
 
 _PROMPT = os.getenv(
@@ -80,23 +75,20 @@ def extract_first_frame(video_path: Path, output_path: Path, timeout: int = 60) 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
         "ffmpeg",
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-y",
-        "-i",
-        str(video_path),
-        "-vf",
-        "select=eq(n\\,0)",
-        "-frames:v",
-        "1",
+        "-hide_banner", "-loglevel", "error", "-y",
+        "-i", str(video_path),
+        "-vf", "select=eq(n\,0)",
+        "-frames:v", "1",
         str(output_path),
     ]
     subprocess.run(cmd, check=True, timeout=timeout)
 
 
-class BailianCaptioner:
-    """OpenAI-compatible client targeting Aliyun Bailian/DashScope."""
+# ============================================================================
+# 核心变更：类名从 BailianCaptioner 改为 KimiCaptioner
+# ============================================================================
+class KimiCaptioner:
+    """OpenAI-compatible client targeting Kimi / Moonshot API."""
 
     def __init__(
         self,
@@ -146,11 +138,7 @@ def resolve_video_path(
     manifest_dir: Path,
     clips_dir: Path,
 ) -> Path:
-    """Resolve the video path for a manifest row.
-
-    Relative paths are interpreted relative to ``clips_dir`` (which defaults to
-    the manifest directory, matching the Pexels pipeline layout).
-    """
+    """Resolve the video path for a manifest row."""
     video = str(row.get("video", "")).strip()
     if not video:
         raise ValueError("row has no 'video' field")
@@ -162,7 +150,7 @@ def resolve_video_path(
 
 def _caption_one(
     args: argparse.Namespace,
-    captioner: BailianCaptioner,
+    captioner: KimiCaptioner,
     row: dict[str, Any],
     manifest_dir: Path,
     clips_dir: Path,
@@ -224,68 +212,56 @@ def _write_manifest(path: Path, rows: list[dict[str, Any]]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Caption video clips using Bailian/DashScope vision model."
+        description="Caption video clips using Kimi/Moonshot vision model."
     )
     parser.add_argument(
-        "--manifest",
-        required=True,
-        type=Path,
+        "--manifest", required=True, type=Path,
         help="Input manifest.jsonl (must contain a 'video' field per row).",
     )
     parser.add_argument(
-        "--output",
-        type=Path,
-        default=None,
+        "--output", type=Path, default=None,
         help="Output manifest.jsonl. Defaults to <manifest>.captioned.jsonl.",
     )
     parser.add_argument(
-        "--clips-dir",
-        type=Path,
-        default=None,
+        "--clips-dir", type=Path, default=None,
         help="Directory containing clips. Defaults to the manifest directory.",
     )
     parser.add_argument(
-        "--frames-dir",
-        type=Path,
-        default=None,
+        "--frames-dir", type=Path, default=None,
         help="Directory to cache first frames. Defaults to <manifest_dir>/frames.",
     )
+    # ============================================================================
+    # 核心变更：API Key 环境变量从 DASHSCOPE_API_KEY 改为 KIMI_API_KEY
+    # ============================================================================
     parser.add_argument(
         "--api-key",
-        default=os.getenv("DASHSCOPE_API_KEY", ""),
-        help="DashScope API key (or set DASHSCOPE_API_KEY env var).",
+        default=os.getenv("KIMI_API_KEY", ""),
+        help="Kimi API key (or set KIMI_API_KEY env var).",
     )
     parser.add_argument(
         "--model",
         default=DEFAULT_MODEL,
-        help=f"Bailian model name (default: {DEFAULT_MODEL}).",
+        help=f"Kimi model name (default: {DEFAULT_MODEL}).",
     )
     parser.add_argument(
         "--base-url",
         default=DEFAULT_BASE_URL,
-        help="OpenAI-compatible base URL for Bailian.",
+        help="OpenAI-compatible base URL for Kimi.",
     )
     parser.add_argument(
-        "--timeout",
-        type=int,
-        default=DEFAULT_TIMEOUT_SEC,
+        "--timeout", type=int, default=DEFAULT_TIMEOUT_SEC,
         help="API call timeout in seconds.",
     )
     parser.add_argument(
-        "--max-workers",
-        type=int,
-        default=4,
+        "--max-workers", type=int, default=1,
         help="Maximum concurrent caption requests.",
     )
     parser.add_argument(
-        "--sleep",
-        type=float,
-        default=0.2,
+        "--sleep", type=float, default=0.2,
         help="Seconds to sleep between requests (per-worker).",
     )
     parser.add_argument(
-        "--update-in-place",
-        action="store_true",
+        "--update-in-place", action="store_true",
         help="Overwrite the input manifest instead of writing a new file.",
     )
     args = parser.parse_args()
@@ -296,9 +272,7 @@ def main() -> int:
     )
 
     if not args.api_key.strip():
-        logger.error(
-            "No API key provided. Set DASHSCOPE_API_KEY or pass --api-key."
-        )
+        logger.error("No API key provided. Set KIMI_API_KEY or pass --api-key.")
         return 1
 
     if not shutil.which("ffmpeg"):
@@ -314,7 +288,7 @@ def main() -> int:
         else (args.output or args.manifest.with_suffix(".captioned.jsonl"))
     )
 
-    captioner = BailianCaptioner(
+    captioner = KimiCaptioner(
         api_key=args.api_key,
         model=args.model,
         base_url=args.base_url,
@@ -326,9 +300,7 @@ def main() -> int:
 
     if args.max_workers <= 1:
         results = [
-            _caption_one(
-                args, captioner, row, manifest_dir, clips_dir, frames_dir
-            )
+            _caption_one(args, captioner, row, manifest_dir, clips_dir, frames_dir)
             for row in rows
         ]
     else:
@@ -336,13 +308,8 @@ def main() -> int:
         with ThreadPoolExecutor(max_workers=args.max_workers) as executor:
             future_to_idx = {
                 executor.submit(
-                    _caption_one,
-                    args,
-                    captioner,
-                    row,
-                    manifest_dir,
-                    clips_dir,
-                    frames_dir,
+                    _caption_one, args, captioner, row,
+                    manifest_dir, clips_dir, frames_dir,
                 ): idx
                 for idx, row in enumerate(rows)
             }

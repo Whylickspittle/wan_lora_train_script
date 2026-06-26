@@ -1,0 +1,2 @@
+{"id":"sample_0001","video":"J:/datasets/example/video_0001.mp4","prompt":"A detailed caption describing the full 5 second motion, subjects, camera movement, lighting, and style."}
+{"id":"sample_0002","video":"J:/datasets/example/video_0002.mp4","prompt":"Another caption. For image-to-video conditioning, the script uses the first frame by default when --task i2v is set."}

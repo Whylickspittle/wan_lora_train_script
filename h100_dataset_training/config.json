@@ -1,0 +1,82 @@
+{
+  "active_dataset": "dataset_a",
+  "project_output_root": "runs",
+  "model_id": "models/Wan2.2-TI2V-5B-Diffusers",
+  "model_download": {
+    "source_model_id": "Wan-AI/Wan2.2-TI2V-5B-Diffusers",
+    "local_dir": "models/Wan2.2-TI2V-5B-Diffusers",
+    "revision": "main",
+    "use_local_model_after_download": true,
+    "allow_patterns": [
+      "*.json",
+      "*.txt",
+      "*.model",
+      "*.safetensors",
+      "*.bin",
+      "vae/*",
+      "transformer/*",
+      "transformer_2/*",
+      "scheduler/*",
+      "tokenizer/*",
+      "text_encoder/*",
+      "image_encoder/*",
+      "feature_extractor/*"
+    ],
+    "resolved_path": "models/Wan2.2-TI2V-5B-Diffusers"
+  },
+  "device": "cuda:0",
+  "diagnostics": {
+    "run_before_training": true,
+    "allow_resize": true,
+    "allow_training_with_errors": false
+  },
+  "datasets": {
+    "dataset_a": {
+      "display_name": "merged_400_nexisgen",
+      "manifest": "/workspace/merged_dataset_nexisgen/manifest.jsonl",
+      "notes": "400 clips, 1280x704, 121 frames"
+    }
+  },
+  "training": {
+    "mode": "lora",
+    "resolution": "1280x704",
+    "num_frames": 121,
+    "fps": 24,
+    "max_train_seconds": 82800,
+    "max_train_steps": 2000,
+    "train_batch_size": 1,
+    "gradient_accumulation_steps": 8,
+    "learning_rate": 0.0001,
+    "weight_decay": 0.01,
+    "max_grad_norm": 1.0,
+    "lora_rank": 32,
+    "lora_alpha": 32.0,
+    "lora_dropout": 0.0,
+    "lora_targets": "to_q,to_k,to_v,to_out.0",
+    "validation_fraction": 0.05,
+    "validation_every": 50,
+    "max_validation_batches": 8,
+    "checkpoint_every": 200,
+    "sample_every": 0,
+    "early_stop_patience": 3,
+    "early_stop_min_delta": 0.005,
+    "early_stop_warmup_steps": 1000,
+    "sample_steps": 30,
+    "num_sample_prompts": 4,
+    "guidance_scale": 5.0,
+    "mixed_precision": "bf16",
+    "timestep_weighting": "logit_normal",
+    "vae_sample_mode": "argmax",
+    "vae_tiling": true,
+    "gradient_checkpointing": true,
+    "num_workers": 0,
+    "pin_memory": false,
+    "seed": 1234
+  },
+  "inference": {
+    "sample_steps": 30,
+    "guidance_scale": 5.0,
+    "max_samples": 4,
+    "seed": 1234
+  }
+}

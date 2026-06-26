@@ -45,3 +45,11 @@ Thumbs.db
 # Secrets / local env
 .env
 **/.env
+
+# Dataset working / output dirs and logs (intermediate, not committed)
+*.log
+dataset_quality_tools/pexels_nature_*/
+dataset_quality_tools/vbench_nature/
+dataset_quality_tools/vbench_review80/
+dataset_quality_tools/vbench_test_biolum/
+h100_dataset_training/runs_smoke/
