@@ -423,6 +423,19 @@ def analyze_manifest(manifest_path: Path, cfg: Any) -> list[dict[str, Any]]:
 def analyze_directory(input_dir: Path, cfg: Any) -> list[dict[str, Any]]:
     extensions = {f".{ext.strip().lower()}" for ext in cfg.extensions.split(",")}
     clip_paths = discover_clips(input_dir, extensions)
+    workers = getattr(cfg, "workers", 1)
+
+    if workers > 1:
+        results: list[dict[str, Any]] = []
+        with ProcessPoolExecutor(max_workers=workers) as executor:
+            futures = [executor.submit(analyze_clip, path, cfg) for path in clip_paths]
+            for future in tqdm(as_completed(futures), total=len(clip_paths), desc="Analyzing clips"):
+                result = future.result()
+                if result is not None:
+                    results.append(result)
+        results.sort(key=lambda r: r["path"])
+        return results
+
     results: list[dict[str, Any]] = []
     for path in tqdm(clip_paths, desc="Analyzing clips"):
         result = analyze_clip(path, cfg)
@@ -502,7 +515,7 @@ Examples:
     parser.add_argument("--clipping-ratio", type=float, default=0.15, help="Black+white pixel ratio threshold")
     parser.add_argument("--min-conformance", type=float, default=0.50, help="Minimum conformance score")
     parser.add_argument("--scene-cut-max", type=int, default=0, help="Max scene cuts per clip")
-    parser.add_argument("--static-mean-delta", type=float, default=0.005, help="Clips with temporal_diff_mean below this value are marked static/FAIL")
+    parser.add_argument("--static-mean-delta", type=float, default=0.010, help="Clips with temporal_diff_mean below this value are marked static/FAIL")
     parser.add_argument("--max-mean-delta", type=float, default=None, help="Clips with temporal_diff_mean above this value are marked chaotic/FAIL (protects consistency/smoothness)")
 
     # Actions

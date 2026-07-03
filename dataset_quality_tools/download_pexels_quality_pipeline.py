@@ -89,6 +89,7 @@ def build_quality_cfg(args: argparse.Namespace) -> types.SimpleNamespace:
         max_mean_delta=args.max_mean_delta,
         extensions="mp4,mov,avi,webm,mkv",
         copy=args.copy_quarantine,
+        workers=args.workers,
     )
 
 
@@ -410,13 +411,17 @@ def main() -> int:
     parser.add_argument("--skip-diagnostics", action="store_true", help="skip final dataset_diagnostics")
     parser.add_argument("--run-diagnostics", action="store_true", help="run final dataset_diagnostics after manifest")
 
+    # Parallelism
+    parser.add_argument("--workers", type=int, default=8,
+                        help="Parallel workers for clean_dataset quality check (default: 8)")
+
     # Quality thresholds
     parser.add_argument("--dup-ratio", type=float, default=0.05)
     parser.add_argument("--timelapse-score", type=float, default=0.50)
     parser.add_argument("--clipping-ratio", type=float, default=0.15)
     parser.add_argument("--min-conformance", type=float, default=0.50)
     parser.add_argument("--scene-cut-max", type=int, default=0)
-    parser.add_argument("--static-mean-delta", type=float, default=0.005,
+    parser.add_argument("--static-mean-delta", type=float, default=0.010,
                         help="Clips with temporal_diff_mean below this value are marked static/FAIL")
     parser.add_argument("--max-mean-delta", type=float, default=None,
                         help="Clips with temporal_diff_mean above this value are marked chaotic/FAIL")

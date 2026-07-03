@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -26,16 +27,41 @@ from datetime import datetime
 from pathlib import Path
 
 from feishu import lark_bot
-from vbench_keywords import KEYWORDS, Keyword
+from vbench_keywords import Keyword
 
 API_KEY_PATH = Path("/workspace/pexel_api")
+ENV_PATH = Path(os.environ.get("WORKSPACE", "/workspace")) / ".env"
 HISTORY_FILE = Path("./pexels_download_history.json")
 
+
+def load_pexels_api_key() -> str:
+    """Load Pexels API key from .env (PEXELS_API_KEY) or fallback to legacy file."""
+    if ENV_PATH.exists():
+        for line in ENV_PATH.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            if key.strip() == "PEXELS_API_KEY":
+                token = value.strip().strip('"\'')
+                if token:
+                    return token
+    if API_KEY_PATH.exists():
+        token = API_KEY_PATH.read_text(encoding="utf-8").strip()
+        if token:
+            return token
+    raise RuntimeError(
+        f"Pexels API key not found. Set PEXELS_API_KEY in {ENV_PATH} "
+        f"or create {API_KEY_PATH}."
+    )
+
 # Per-clip Tier-A motion bounds (temporal_diff_mean).
-STATIC_MEAN_DELTA = "0.02"   # below -> static / timelapse -> FAIL
+STATIC_MEAN_DELTA = "0.010"  # below -> static / timelapse -> FAIL
 MAX_MEAN_DELTA = "0.20"      # above -> chaotic -> FAIL (protects consistency)
 
-CLIPS_PER_VIDEO = "3"
+CLIPS_PER_VIDEO = "1"
 BATCH_SIZE = 30
 OVERDOWNLOAD_FACTOR = 2.5    # gather ~2.5x target PASS clips before Top-K
 
@@ -48,6 +74,11 @@ def _count_clips(clips_dir: Path) -> int:
     if not clips_dir.exists():
         return 0
     return sum(1 for p in clips_dir.iterdir() if p.is_file() and p.suffix.lower() == ".mp4")
+
+
+def _count_survivors(output_dir: Path) -> int:
+    """Count all clips ever produced (PASS + quarantined FAIL)."""
+    return _count_clips(output_dir / "clips") + _count_clips(output_dir / "quarantine")
 
 
 def _delete_raw(output_dir: Path) -> None:
@@ -64,7 +95,7 @@ def _run(cmd: list[str], log_file: Path) -> int:
         return subprocess.run(cmd, stdout=fh, stderr=subprocess.STDOUT).returncode
 
 
-def _base_pipeline_cmd(api_key: str, query: str, output_dir: Path) -> list[str]:
+def _base_pipeline_cmd(api_key: str, query: str, output_dir: Path, workers: int) -> list[str]:
     return [
         sys.executable, "download_pexels_quality_pipeline.py",
         "--api-key", api_key,
@@ -77,14 +108,15 @@ def _base_pipeline_cmd(api_key: str, query: str, output_dir: Path) -> list[str]:
         "--quarantine",
         "--static-mean-delta", STATIC_MEAN_DELTA,
         "--max-mean-delta", MAX_MEAN_DELTA,
+        "--workers", str(workers),
     ]
 
 
-def _tier_a(api_key: str, kw: Keyword, output_dir: Path, log_file: Path) -> int:
+def _tier_a(api_key: str, kw: Keyword, output_dir: Path, log_file: Path, workers: int) -> int:
     """Over-download + slice + Tier-A quality check. Returns surviving clip count."""
-    base = _base_pipeline_cmd(api_key, kw.query, output_dir)
+    base = _base_pipeline_cmd(api_key, kw.query, output_dir, workers)
     overdownload_target = int(kw.target_count * OVERDOWNLOAD_FACTOR)
-    survivors = _count_clips(output_dir / "clips")
+    survivors = _count_survivors(output_dir)
     batch_no = 0
 
     while survivors < overdownload_target:
@@ -105,7 +137,7 @@ def _tier_a(api_key: str, kw: Keyword, output_dir: Path, log_file: Path) -> int:
             break
 
         _delete_raw(output_dir)
-        survivors = _count_clips(output_dir / "clips")
+        survivors = _count_survivors(output_dir)
 
     return survivors
 
@@ -151,13 +183,13 @@ def _tier_b_and_select(kw: Keyword, output_dir: Path, log_file: Path) -> int:
     return sum(1 for line in manifest.read_text(encoding="utf-8").splitlines() if line.strip())
 
 
-def run_keyword(api_key: str, kw: Keyword, output_root: Path, log_dir: Path) -> tuple[bool, int]:
+def run_keyword(api_key: str, kw: Keyword, output_root: Path, log_dir: Path, workers: int) -> tuple[bool, int]:
     safe = f"{kw.category}__{_safe_name(kw.query)}"
     output_dir = output_root / safe
     log_file = log_dir / f"{safe}.log"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    survivors = _tier_a(api_key, kw, output_dir, log_file)
+    survivors = _tier_a(api_key, kw, output_dir, log_file, workers)
     selected = _tier_b_and_select(kw, output_dir, log_file)
     reached = selected >= kw.target_count
 
@@ -180,17 +212,31 @@ def main() -> int:
                         help="Only process the first N keywords (smoke testing)")
     parser.add_argument("--target-override", type=int, default=None,
                         help="Override every keyword's target_count (smoke testing)")
+    parser.add_argument("--keywords-module", default="vbench_keywords",
+                        help="Python module exposing a KEYWORDS list "
+                             "(e.g. motion_scenery_keywords)")
+    parser.add_argument("--workers", type=int, default=8,
+                        help="Parallel workers for clean_dataset quality check (default: 8)")
     args = parser.parse_args()
 
-    if not API_KEY_PATH.exists():
-        print(f"API key file not found: {API_KEY_PATH}", file=sys.stderr)
+    try:
+        api_key = load_pexels_api_key()
+    except RuntimeError as exc:
+        print(exc, file=sys.stderr)
         return 1
-    api_key = API_KEY_PATH.read_text(encoding="utf-8").strip()
+
+    import importlib
+    try:
+        kw_module = importlib.import_module(args.keywords_module)
+        keyword_list = kw_module.KEYWORDS
+    except (ImportError, AttributeError) as exc:
+        print(f"Cannot load KEYWORDS from '{args.keywords_module}': {exc}", file=sys.stderr)
+        return 1
 
     args.output.mkdir(parents=True, exist_ok=True)
     args.log_dir.mkdir(parents=True, exist_ok=True)
 
-    keywords = list(KEYWORDS)
+    keywords = list(keyword_list)
     if args.limit_keywords:
         keywords = keywords[: args.limit_keywords]
     if args.target_override is not None:
@@ -202,7 +248,7 @@ def main() -> int:
 
     try:
         for kw in keywords:
-            reached, selected = run_keyword(api_key, kw, args.output, args.log_dir)
+            reached, selected = run_keyword(api_key, kw, args.output, args.log_dir, args.workers)
             total_selected += selected
             if not reached:
                 shortfalls.append(kw.query)

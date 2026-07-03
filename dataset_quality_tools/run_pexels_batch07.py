@@ -7,6 +7,7 @@ as a subprocess, and sends Feishu notifications on start / success / failure.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from datetime import datetime
@@ -15,18 +16,40 @@ from pathlib import Path
 from feishu import lark_bot
 
 API_KEY_PATH = Path("/workspace/pexel_api")
+ENV_PATH = Path(os.environ.get("WORKSPACE", "/workspace")) / ".env"
 OUTPUT = Path("./pexels_nature_batch07")
 LOG_FILE = Path("./pexels_nature_batch07.log")
 
 
-def main() -> int:
-    if not API_KEY_PATH.exists():
-        print(f"API key file not found: {API_KEY_PATH}", file=sys.stderr)
-        return 1
+def load_pexels_api_key() -> str:
+    """Load Pexels API key from .env (PEXELS_API_KEY) or fallback to legacy file."""
+    if ENV_PATH.exists():
+        for line in ENV_PATH.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            if key.strip() == "PEXELS_API_KEY":
+                token = value.strip().strip('"\'')
+                if token:
+                    return token
+    if API_KEY_PATH.exists():
+        token = API_KEY_PATH.read_text(encoding="utf-8").strip()
+        if token:
+            return token
+    raise RuntimeError(
+        f"Pexels API key not found. Set PEXELS_API_KEY in {ENV_PATH} "
+        f"or create {API_KEY_PATH}."
+    )
 
-    api_key = API_KEY_PATH.read_text(encoding="utf-8").strip()
-    if not api_key:
-        print("API key file is empty", file=sys.stderr)
+
+def main() -> int:
+    try:
+        api_key = load_pexels_api_key()
+    except RuntimeError as exc:
+        print(exc, file=sys.stderr)
         return 1
 
     cmd = [

@@ -11,6 +11,7 @@ crashes.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -20,9 +21,35 @@ from pathlib import Path
 from feishu import lark_bot
 
 API_KEY_PATH = Path("/workspace/pexel_api")
+ENV_PATH = Path(os.environ.get("WORKSPACE", "/workspace")) / ".env"
 OUTPUT_ROOT = Path("./pexels_nature_batch08_multi")
 LOG_DIR = Path("./pexels_nature_batch08_multi_logs")
 PID_FILE = Path("./pexels_nature_batch08_multi.pid")
+
+
+def load_pexels_api_key() -> str:
+    """Load Pexels API key from .env (PEXELS_API_KEY) or fallback to legacy file."""
+    if ENV_PATH.exists():
+        for line in ENV_PATH.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            if key.strip() == "PEXELS_API_KEY":
+                token = value.strip().strip('"\'')
+                if token:
+                    return token
+    if API_KEY_PATH.exists():
+        token = API_KEY_PATH.read_text(encoding="utf-8").strip()
+        if token:
+            return token
+    raise RuntimeError(
+        f"Pexels API key not found. Set PEXELS_API_KEY in {ENV_PATH} "
+        f"or create {API_KEY_PATH}."
+    )
+
 
 KEYWORDS = [
     "drone aerial view of mountain peaks at golden hour sunrise, cinematic 4K",
@@ -64,8 +91,7 @@ def _delete_raw(output_dir: Path) -> None:
             print(f"[cleanup] failed to remove {raw_dir}: {exc}", file=sys.stderr)
 
 
-def _build_base_cmd(keyword: str, output_dir: Path) -> list[str]:
-    api_key = API_KEY_PATH.read_text(encoding="utf-8").strip()
+def _build_base_cmd(keyword: str, output_dir: Path, api_key: str) -> list[str]:
     return [
         sys.executable,
         "download_pexels_quality_pipeline.py",
@@ -85,7 +111,7 @@ def _build_base_cmd(keyword: str, output_dir: Path) -> list[str]:
         "./pexels_download_history.json",
         "--quarantine",
         "--static-mean-delta",
-        "0.02",
+        "0.010",
     ]
 
 
@@ -115,7 +141,7 @@ def _rebuild_manifest(output_dir: Path, keyword: str) -> int:
     return kept
 
 
-def run_keyword(keyword: str) -> tuple[int, int]:
+def run_keyword(keyword: str, api_key: str) -> tuple[int, int]:
     """Process one keyword in batches. Returns (returncode, cumulative_pass)."""
     safe_name = _safe_name(keyword)
     output_dir = OUTPUT_ROOT / safe_name
@@ -126,7 +152,7 @@ def run_keyword(keyword: str) -> tuple[int, int]:
     if log_file.exists():
         log_file.write_text("", encoding="utf-8")
 
-    base_cmd = _build_base_cmd(keyword, output_dir)
+    base_cmd = _build_base_cmd(keyword, output_dir, api_key)
     cumulative_pass = _count_clips(output_dir / "clips")
     batch_no = 0
 
@@ -173,8 +199,10 @@ def run_keyword(keyword: str) -> tuple[int, int]:
 
 
 def main() -> int:
-    if not API_KEY_PATH.exists():
-        print(f"API key file not found: {API_KEY_PATH}", file=sys.stderr)
+    try:
+        api_key = load_pexels_api_key()
+    except RuntimeError as exc:
+        print(exc, file=sys.stderr)
         return 1
 
     OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
@@ -198,7 +226,7 @@ def main() -> int:
                 overall_pass += pass_count
                 continue
 
-            returncode, cumulative_pass = run_keyword(keyword)
+            returncode, cumulative_pass = run_keyword(keyword, api_key)
             overall_pass += cumulative_pass
             if returncode != 0:
                 overall_failures.append(keyword)
