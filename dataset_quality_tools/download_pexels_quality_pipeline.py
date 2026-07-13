@@ -123,6 +123,29 @@ def download_with_retry(
     return False
 
 
+def load_history(history_path: Path | None) -> set[int]:
+    """Load previously downloaded Pexels video IDs from a JSON history file."""
+    if history_path is None or not history_path.exists():
+        return set()
+    try:
+        data = json.loads(history_path.read_text(encoding="utf-8"))
+        ids = data.get("downloaded_ids", [])
+        return {int(x) for x in ids}
+    except Exception as exc:
+        print(f"  warning: could not read history file: {exc}")
+        return set()
+
+
+def save_history(history_path: Path, seen_ids: set[int]) -> None:
+    """Persist downloaded Pexels video IDs so future runs can skip them."""
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "downloaded_ids": sorted(seen_ids),
+        "last_updated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    history_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
 def download_phase(args: argparse.Namespace) -> list[Path]:
     output_dir = args.output
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -132,12 +155,15 @@ def download_phase(args: argparse.Namespace) -> list[Path]:
     session = download_videos_direct.requests.Session()
     session.headers.update({"Authorization": args.api_key})
 
+    history_path: Path | None = args.history_file
     downloaded = 0
-    seen_ids: set[int] = set()
+    seen_ids: set[int] = load_history(history_path)
     page = 1
     raw_paths: list[Path] = []
 
     print(f"[download phase] target: {args.count} videos")
+    if seen_ids:
+        print(f"  skipping {len(seen_ids)} video(s) from existing history")
 
     while downloaded < args.count:
         print(f"\n[page {page}] searching '{args.query}'...")
@@ -189,11 +215,15 @@ def download_phase(args: argparse.Namespace) -> list[Path]:
 
             downloaded += 1
             raw_paths.append(raw_path)
+            if history_path is not None:
+                save_history(history_path, seen_ids)
 
         page += 1
         time.sleep(args.sleep)
 
     print(f"\n[download phase] saved {len(raw_paths)} raw videos to {raw_dir}")
+    if history_path is not None:
+        print(f"  history written to: {history_path}")
     return raw_paths
 
 
@@ -355,6 +385,12 @@ def main() -> int:
     parser.add_argument("--api-key", help="Pexels API key (required for download)")
     parser.add_argument("--query", default="4k nature scenery drone", help="Pexels search query")
     parser.add_argument("--output", type=Path, default=Path("pexels_dataset"), help="output directory")
+    parser.add_argument(
+        "--history-file",
+        type=Path,
+        default=None,
+        help="JSON file tracking downloaded Pexels video IDs (defaults to {output}/download_history.json)",
+    )
     parser.add_argument("--count", type=int, default=10, help="how many videos to download")
     parser.add_argument("--min-height", type=int, default=2160, help="min video height")
     parser.add_argument("--min-fps", type=int, default=24, help="min fps")
@@ -382,6 +418,9 @@ def main() -> int:
     parser.add_argument("--copy-quarantine", action="store_true", help="copy instead of move when quarantining")
 
     args = parser.parse_args()
+
+    if args.history_file is None:
+        args.history_file = args.output / "download_history.json"
 
     if not args.process_only and not args.api_key:
         print("Error: --api-key is required unless using --process-only", file=sys.stderr)

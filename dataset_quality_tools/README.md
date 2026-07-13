@@ -15,6 +15,7 @@
 | `download_pexels_quality_pipeline.py` | Pexels 端到端下载/切片/质检 pipeline | Pexels API key + 关键词 | `clips/`, `quality_report/`, `quarantine/`, `manifest.jsonl`, `diagnostics/` |
 | `video_captioner.py` | 单帧/多帧视频 caption | 视频 clip + `.env` | 单条 caption |
 | `caption_batch.py` | 批量生成单帧/多帧 caption 对比 | `clips/` 目录 + `.env` | `captions.jsonl` |
+| `caption_with_bailian.py` | 用百炼多模态模型给 clips 重新打 caption | `manifest.jsonl` | 带 `prompt` 的新 `manifest.jsonl` + `frames/` 首帧缓存 |
 
 ---
 
@@ -152,6 +153,22 @@ cd ../h100_dataset_training
 python 01_preflight_dataset.py
 python 02_train_dataset.py
 ```
+
+---
+
+### 重新打标 caption（可选）
+
+Pexels pipeline 默认用搜索关键词生成占位 prompt。如需更高质量的训练 caption，可用 `caption_with_bailian.py` 调用阿里云百炼多模态模型重新打标：
+
+```bash
+export DASHSCOPE_API_KEY=sk-xxxxxxxxxxxxxxxx
+
+python caption_with_bailian.py \
+    --manifest ./pexels_nature/manifest.jsonl \
+    --output ./pexels_nature/manifest_captioned.jsonl
+```
+
+详见 [`CAPTION_WITH_BAILIAN.md`](./CAPTION_WITH_BAILIAN.md)。
 
 ---
 
