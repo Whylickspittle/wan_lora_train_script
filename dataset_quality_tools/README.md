@@ -13,6 +13,8 @@
 | `clean_dataset.py` | 分析已切分好的 clips | `clips/` 目录或 `manifest.jsonl` | `quality_report.csv`, `summary.json`, `report.html`, `quarantine/` |
 | `prescreen_sources.py` | 预筛选候选 source URL | `urls.txt` | `prescreen_report.csv`, `keep_urls.txt`, `reject_urls.txt` |
 | `download_pexels_quality_pipeline.py` | Pexels 端到端下载/切片/质检 pipeline | Pexels API key + 关键词 | `clips/`, `quality_report/`, `quarantine/`, `manifest.jsonl`, `diagnostics/` |
+| `video_captioner.py` | 单帧/多帧视频 caption | 视频 clip + `.env` | 单条 caption |
+| `caption_batch.py` | 批量生成单帧/多帧 caption 对比 | `clips/` 目录 + `.env` | `captions.jsonl` |
 
 ---
 
@@ -247,6 +249,58 @@ clean_dataset.py ──► quality_report.csv + quarantine/
     │
     ▼
 ../h100_dataset_training/02_train_dataset.py
+```
+
+---
+
+## 多帧视频 Caption（新增）
+
+`video_captioner.py` 使用 OpenAI 兼容的多模态 API 为视频 clip 生成 text-to-video prompt。相比单帧 caption，它会抽取 4 张等间距关键帧发给模型，从而获得**相机运动**和**首帧外的场景变化**信息，显著提升 I2V 训练的动态性。
+
+### 快速开始
+
+```bash
+cd dataset_quality_tools
+
+# 1. 复制示例配置并填写
+ cp .env.example .env
+# 编辑 .env，填入 OPENAI_API_KEY 等
+
+# 2. 给单个 clip 生成 caption
+python video_captioner.py /path/to/clip.mp4
+
+# 3. 指定只使用首帧（对比效果）
+python video_captioner.py /path/to/clip.mp4 --keyframes 1
+
+# 4. 批量处理整个 clips 目录，输出单帧/多帧对比
+python caption_batch.py \
+    --input_dir /path/to/clips \
+    --output captions.jsonl \
+    --num_keyframes 4
+```
+
+### 配置说明
+
+编辑 `.env`：
+
+```bash
+OPENAI_API_KEY=sk-your-key-here
+OPENAI_BASE_URL=https://www.dmxapi.cn/v1      # 可选，用于中转平台
+NEXIS_CAPTION_MODEL=gpt-4o-mini               # 可选，默认 gpt-4o-mini
+NEXIS_CAPTION_KEYFRAMES=4                     # 可选，默认 4
+```
+
+### 输出示例
+
+`caption_batch.py` 会生成 JSONL，每行包含：
+
+```json
+{
+  "video": "/path/to/clip.mp4",
+  "single_frame_caption": "Aerial view captures a river flowing beside steep cliffs.",
+  "multi_frame_caption": "A drone soars upward over a rugged canyon, revealing hikers exploring the cliff's edge.",
+  "num_keyframes": 4
+}
 ```
 
 ---
