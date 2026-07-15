@@ -23,6 +23,12 @@ logger = logging.getLogger(__name__)
 
 # Columns that should be numeric and their target types.
 NUMERIC_COLUMNS: dict[str, type] = {
+    "clip_start_sec": float,
+    "duration_sec": float,
+    "width": int,
+    "height": int,
+    "fps": float,
+    "num_frames": int,
     "motion_mean": float,
     "motion_median": float,
     "motion_max": float,
