@@ -50,14 +50,20 @@ def main() -> None:
     parser.add_argument(
         "--min-offset",
         type=float,
-        default=0.01,
-        help="Minimum random offset in seconds (default: 0.01).",
+        default=0.1,
+        help="Minimum random offset in seconds (default: 0.1).",
     )
     parser.add_argument(
         "--max-offset",
         type=float,
-        default=0.05,
-        help="Maximum random offset in seconds (default: 0.05).",
+        default=1.0,
+        help="Maximum random offset in seconds (default: 1.0).",
+    )
+    parser.add_argument(
+        "--step",
+        type=float,
+        default=0.1,
+        help="Step size for offset quantization (default: 0.1).",
     )
     parser.add_argument(
         "--seed",
@@ -105,17 +111,20 @@ def main() -> None:
 
     random.seed(args.seed)
 
+    steps = int(round((args.max_offset - args.min_offset) / args.step)) + 1
+    possible_offsets = [round(args.min_offset + i * args.step, 1) for i in range(steps)]
+
     new_starts: list[float] = []
     for _, src_row in src_sorted.iterrows():
         original_start = float(src_row["clip_start_sec"])
-        offset = round(random.uniform(args.min_offset, args.max_offset), 3)
-        new_starts.append(original_start + offset)
+        offset = random.choice(possible_offsets)
+        new_starts.append(round(original_start + offset, 3))
 
     if args.dry_run:
         logger.info("DRY RUN: would update %d clip_start_sec values", len(df_sorted))
         for i in range(min(10, len(df_sorted))):
             logger.info(
-                "[%d] %s: original=%s offset=%.3f new=%.3f",
+                "[%d] %s: original=%s offset=%.1f new=%.3f",
                 i,
                 df_sorted.loc[i, "clip_id"],
                 src_sorted.loc[i, "clip_start_sec"],
