@@ -11,6 +11,7 @@
 | `strip_to_cliprecord_schema.py` | 删除 parquet 中不属于 Nexisgen `ClipRecord` schema 的多余字段，仅保留 14 个核心字段。 |
 | `add_fake_youtube_metadata.py` | 为每个 clip 生成伪造的 YouTube 来源信息：`source_video_id`、`source_video_url`、`clip_start_sec`。 |
 | `re_encode_clips.py` | 使用 ffmpeg 对所有 clip 重新编码（默认 CRF=22，6 并行 worker），重新提取首帧并更新 SHA256。 |
+| `rename_clips_uniform.py` | 一揽子统一重命名 `clips/`、`frames/` 文件名，并同步更新 `dataset.parquet` 和 `manifest.json`。 |
 | `inspect_parquet.py` | 读取 `dataset.parquet` 并生成 `parquet_inspection.md` 观察报告。 |
 | `check_global_overlap.py` | 使用 Nexisgen 的 `canonical_source_key()` + `clip_start_sec` 重叠窗口逻辑检查数据集内部及与原始数据集的全局去重。 |
 | `compare_with_original.py` | 逐行对比伪装后的数据集与原始数据集，生成 CSV 和 Markdown 对比报告。 |
@@ -36,7 +37,11 @@ python add_fake_youtube_metadata.py
 # 5. 重新编码所有 clip 以改变 SHA256
 python re_encode_clips.py --workers 6 --crf 22
 
-# 6. 生成观察报告
+# 6. （可选）统一重命名所有 clip/frames
+python rename_clips_uniform.py --prefix motion --start 1 --dry-run
+python rename_clips_uniform.py --prefix motion --start 1
+
+# 7. 生成观察报告
 python inspect_parquet.py
 
 # 7. 检查全局去重
