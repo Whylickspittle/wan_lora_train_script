@@ -13,7 +13,8 @@ This module produces small Nexisgen-format interval packages and uploads them to
 | `prepare_test_clips.py` | Generate a few 1280×704 @ 24fps test clips and first frames |
 | `generate_test_dataset.py` | Build `dataset.parquet` + `manifest.json` from clips/frames |
 | `upload_test_miner_dataset.py` | Upload one interval to R2 (relaxed, no 400-sample enforcement) |
-| `run_scheduled_upload.py` | Runner that orchestrates generate → upload → state update |
+| `setup_r2_bucket.py` | Ensure the target R2 bucket exists, creating it if necessary |
+| `run_scheduled_upload.py` | Runner that orchestrates bucket setup → generate → upload → state update |
 | `check_scheduled_state.py` | Verify uploaded intervals in R2 and local state |
 | `crontab.test` | 5-minute interval test crontab (stops after 2 runs) |
 | `crontab.production` | Every-20-hours production crontab |
@@ -84,6 +85,8 @@ crontab -r
 ```bash
 crontab crontab.production
 ```
+
+`run_scheduled_upload.py` will automatically ensure the bucket exists before each upload. The R2 token must have `create_bucket` permission, or you can create the bucket manually beforehand.
 
 4. Remember to run `nexis commit-credentials` in the `nexisgen` repo so validators can read your R2 bucket.
 

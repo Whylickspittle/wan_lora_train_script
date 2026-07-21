@@ -32,6 +32,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from setup_r2_bucket import ensure_bucket
+
 logger = logging.getLogger("run_scheduled_upload")
 
 
@@ -130,6 +132,12 @@ def parse_args() -> argparse.Namespace:
         help="Path to schedule state JSON (default: .schedule_state.json next to this script)",
     )
     parser.add_argument(
+        "--env-file",
+        type=Path,
+        default=None,
+        help="Path to .env file with R2 credentials (default: .env in current directory)",
+    )
+    parser.add_argument(
         "--max-runs",
         type=int,
         default=0,
@@ -168,6 +176,11 @@ def main() -> int:
     logger.info("starting upload for interval_id=%d", interval_id)
 
     try:
+        # Make sure the target bucket exists before generating/uploading data.
+        if not ensure_bucket(bucket, args.env_file):
+            logger.error("bucket setup failed for %s", bucket)
+            return 1
+
         interval_dir = prepare_interval_dir(interval_id, source_interval_dir, data_dir)
         generate_dataset(interval_id, interval_dir, args.hotkey, script_dir)
         upload_dataset(interval_id, interval_dir, args.hotkey, bucket, script_dir)
