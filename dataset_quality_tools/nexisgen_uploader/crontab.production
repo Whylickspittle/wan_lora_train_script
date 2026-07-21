@@ -1,0 +1,7 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Production: upload a new Nexisgen interval every 20 hours.
+# Replace HOTKEY with your miner SS58 address.
+# Remove --bucket test01 in production so the script uses your hotkey-named bucket.
+7 */20 * * * cd /workspace/nexisgen && /usr/local/bin/python /workspace/wan_lora_train_script/dataset_quality_tools/nexisgen_uploader/run_scheduled_upload.py --hotkey HOTKEY --env-file /workspace/nexisgen/.env >> /workspace/wan_lora_train_script/dataset_quality_tools/nexisgen_uploader/cron_run.log 2>&1

@@ -1,0 +1,11 @@
+# Generated test data
+interval_*/
+!interval_1/.gitkeep
+
+# State and logs
+.schedule_state.json
+*.log
+
+# Python
+__pycache__/
+*.pyc

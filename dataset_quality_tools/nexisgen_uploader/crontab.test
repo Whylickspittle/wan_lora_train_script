@@ -1,0 +1,6 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Test: upload a new interval every 5 minutes, stop after 2 runs.
+# Replace HOTKEY with your miner SS58 address.
+*/5 * * * * cd /workspace/nexisgen && /usr/local/bin/python /workspace/wan_lora_train_script/dataset_quality_tools/nexisgen_uploader/run_scheduled_upload.py --hotkey HOTKEY --bucket test01 --env-file /workspace/nexisgen/.env --max-runs 2 >> /workspace/wan_lora_train_script/dataset_quality_tools/nexisgen_uploader/cron_run.log 2>&1
